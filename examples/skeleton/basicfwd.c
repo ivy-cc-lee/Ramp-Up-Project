@@ -160,8 +160,6 @@ lcore_main(void)
 			{
 				for (int i=0; i < nb_rx; i++)
 				{
-					//printf("Packet no: %u | buf_addr: %p | buf_iova: %lu | Input port: %u \n", i ,bufs[i]->buf_addr, bufs[i]->buf_iova, bufs[i]->port);
-
 					struct rte_ether_hdr *ethHeader;
 					struct rte_ether_addr temp;
 
