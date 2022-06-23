@@ -97,10 +97,10 @@ port_init(uint16_t port, struct rte_mempool *mbuf_pool)
 			port, RTE_ETHER_ADDR_BYTES(&addr));
 
 	/* Enable RX in promiscuous mode for the Ethernet device. */
-	retval = rte_eth_promiscuous_enable(port);
+	//retval = rte_eth_promiscuous_enable(port);
 	/* End of setting RX port in promiscuous mode. */
-	if (retval != 0)
-		return retval;
+	// if (retval != 0)
+	// 	return retval;
 
 	return 0;
 }
@@ -139,18 +139,83 @@ lcore_main(void)
 		 * port. The mapping is 0 -> 1, 1 -> 0, 2 -> 3, 3 -> 2, etc.
 		 */
 		RTE_ETH_FOREACH_DEV(port) {
-
+			
 			/* Get burst of RX packets, from first port of pair. */
 			struct rte_mbuf *bufs[BURST_SIZE];
+
 			const uint16_t nb_rx = rte_eth_rx_burst(port, 0,
 					bufs, BURST_SIZE);
 
+			//printf("NB_RX: %d\n", nb_rx);
+
+			//Dump contents of mbufs to console
+			//rte_pktmbuf_dump(stdout, *bufs, BURST_SIZE);
+
 			if (unlikely(nb_rx == 0))
+			{
+				//printf("No packets\n");
 				continue;
+			}
+			else
+			{
+				for (int i=0; i < nb_rx; i++)
+				{
+					//printf("Packet no: %u | buf_addr: %p | buf_iova: %lu | Input port: %u \n", i ,bufs[i]->buf_addr, bufs[i]->buf_iova, bufs[i]->port);
+
+					struct rte_ether_hdr *ethHeader;
+					struct rte_ether_addr temp;
+
+					//populate ethernet header so that it can be amended
+					//second arg is the type to cast the result into
+					ethHeader = rte_pktmbuf_mtod(bufs[i], struct rte_ether_hdr *);
+					
+					//swap src to dst as it's coming from pktgen and need to loop back
+					temp = ethHeader->dst_addr;
+					rte_ether_addr_copy(&ethHeader->src_addr, &ethHeader->dst_addr);
+					rte_ether_addr_copy(&temp, &ethHeader->src_addr);
+
+					/* 
+					my macs were 90:e2:ba:69:c9:08 and 90:e2:ba:69:c9:09 on pktgen NIC
+					so I needed to make sure that they corresponded to the right ports
+					in accordance to how they were wired/connected to each other
+					*/
+					/*
+					if (ethHeader->dst_addr.addr_bytes[5] == 8)
+						ethHeader->dst_addr.addr_bytes[5]++;
+
+					else if (ethHeader->dst_addr.addr_bytes[5] == 9)
+						ethHeader->dst_addr.addr_bytes[5]--;
+					*/
+
+					// bitwise XOR in the same manner as below for tx burst to ensure the port config is correct
+					ethHeader->dst_addr.addr_bytes[5] = ethHeader->dst_addr.addr_bytes[5] ^ 1;
+					
+					/*
+					char dformat[RTE_ETHER_ADDR_FMT_SIZE];
+					rte_ether_format_addr(dformat, RTE_ETHER_ADDR_FMT_SIZE, &ethHeader->dst_addr);
+					printf("New dst after swaps: %s\n", dformat);
+
+					char sformat[RTE_ETHER_ADDR_FMT_SIZE];
+					rte_ether_format_addr(sformat, RTE_ETHER_ADDR_FMT_SIZE, &ethHeader->src_addr);
+					printf("New src after swaps: %s\n", sformat);
+					*/
+
+					// Test - hardcoded version
+					// ethHeader->dst_addr.addr_bytes[3] = 105;
+					// ethHeader->dst_addr.addr_bytes[4] = 201;
+					// ethHeader->dst_addr.addr_bytes[5] = 9;
+
+				}
+			}
+
+			// else
+			// 	printf("Amount of packets Rx: %u\t", nb_rx);
 
 			/* Send burst of TX packets, to second port of pair. */
 			const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, 0,
 					bufs, nb_rx);
+			
+			//printf("Amount of packets Tx: %u\t", nb_tx);
 
 			/* Free any unsent packets. */
 			if (unlikely(nb_tx < nb_rx)) {
@@ -218,3 +283,4 @@ main(int argc, char *argv[])
 
 	return 0;
 }
+
